@@ -16,12 +16,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
-#define LOG_MEM_ALLOC_ERROR                                               \
-    ESP_LOGE(TAG, "Could not allocate memory, see %s, line %d", __FILE__, \
+#define LOG_MEM_ALLOC_ERROR                                                   \
+    ESP_LOGE(PID_TAG, "Could not allocate memory, see %s, line %d", __FILE__, \
              __LINE__);
 
-const char *TAG = "PID";
+const char *PID_TAG = "PID";
 
 /*
  * Provide a pid_controller_struct with defaults set
@@ -67,6 +68,7 @@ create_pid_struct(float *sp, float *pv, float *cv)
 
             .IntegratorValue = 0,
             .IntegratorLimits = lims,
+            .SamplingRate = 20,
 
         };
 
@@ -148,9 +150,9 @@ calculate_both_limits(pid_limits *lim, float inp,
 /*
  * PID controller FreeRTOS task
  */
-static void pid_controller_task(void *pid)
+static void pid_controller_task(void *pid_arg)
 {
-    pid = (pid_controller_struct *)pid;
+    pid_controller_struct *pid = (pid_controller_struct *)pid_arg;
 
     float last_err = 0.0;
     float last_pv = 0.0;
@@ -169,6 +171,7 @@ static void pid_controller_task(void *pid)
     for (;;)
     {
         // pause for set amount of time for sampling
+        ESP_LOGD(PID_TAG, "Delaying for %" PRId16 " ms", pid->SamplingRate);
         xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(pid->SamplingRate));
         xLastWakeTime = xTaskGetTickCount();
 
@@ -235,11 +238,11 @@ void start_pid_task(pid_controller_struct *pid)
     BaseType_t task_ret;
 
     // start gpio task
-    task_ret = xTaskCreate(pid_controller_task, "pid_controller_task", 2000,
+    task_ret = xTaskCreate(pid_controller_task, "pid_controller_task", 4000,
                            (void *)pid, 20, NULL);
     if (task_ret == pdPASS)
     {
-        ESP_LOGI(TAG, "Started the PID task");
+        ESP_LOGI(PID_TAG, "Started the PID task");
     }
     else
     {

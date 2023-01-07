@@ -75,18 +75,35 @@ void app_main(void)
 
 #pragma endregion
 
+    float setpoint = 0.0;
+    float control_value = 0.0;
+
+    pid_controller_struct pid = create_pid_struct(&setpoint,
+                                                  &temperature,
+                                                  &control_value);
+
+    start_pid_task(&pid);
+
+    pid.ki = 0.1;
+    pid.IntegratorLimits.ClampEnable = 1;
+    pid.IntegratorLimits.LimitHi = 10;
+    pid.IntegratorLimits.LimitLo = -10;
+    pid.Init = false;
+    *pid.Setpoint = 30;
+
     while (true)
     {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
         xQueueReceive(MAX31856_TEMP_READ_QUEUE, &temperature, 0);
         xQueueReceive(MAX31856_FAULT_QUEUE, &fault, 0);
 
         printf("Temperature: %.4f °C\n", temperature);
+        printf("Control Value: %.1f\n", *pid.ControlValue);
 
         if (fault != 0)
         {
-            printf("Fault! %.02x\n", fault);
+            max31856_log_faults(fault);
         }
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
