@@ -1,0 +1,13 @@
+**/build/
+sdkconfig.old
+
+**/__pycache__/
+**/venv/
+
+**.so
+
+# Visual Studio Code
+.vscode/
+.intellisense/
+
+sdkconfig
