@@ -19,7 +19,7 @@
     ESP_LOGE(TAG, "Could not allocate memory, see %s, line %d", __FILE__, \
              __LINE__);
 
-const char *TAG = "MAX31856";
+static const char *TAG = "MAX31856";
 
 static QueueHandle_t DRDY_EVT_QUEUE = NULL;
 QueueHandle_t MAX31856_TEMP_READ_QUEUE = NULL;

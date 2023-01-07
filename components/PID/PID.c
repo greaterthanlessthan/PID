@@ -22,7 +22,7 @@
     ESP_LOGE(PID_TAG, "Could not allocate memory, see %s, line %d", __FILE__, \
              __LINE__);
 
-const char *PID_TAG = "PID";
+static const char *PID_TAG = "PID";
 
 /*
  * Provide a pid_controller_struct with defaults set

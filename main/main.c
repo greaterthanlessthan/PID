@@ -25,6 +25,8 @@
 // Because I want folding dammit
 #pragma GCC diagnostic ignored "-Wunknown-pragmas"
 
+static const char *TAG = "MAIN";
+
 void app_main(void)
 {
     // Setup the temperature reading from SPI chip
@@ -98,12 +100,9 @@ void app_main(void)
         xQueueReceive(MAX31856_TEMP_READ_QUEUE, &temperature, 0);
         xQueueReceive(MAX31856_FAULT_QUEUE, &fault, 0);
 
-        printf("Temperature: %.4f °C\n", temperature);
+        printf("Temperature: %.1f °C\n", temperature);
         printf("Control Value: %.1f\n", *pid.ControlValue);
 
-        if (fault != 0)
-        {
-            max31856_log_faults(fault);
-        }
+        max31856_log_faults(fault);
     }
 }
