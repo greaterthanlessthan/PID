@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -13,6 +14,8 @@
 
 #include "max31856.h"
 #include "PID.h"
+
+#include "adc.h"
 
 #define PIN_NUM_MISO 19
 #define PIN_NUM_MOSI 23
@@ -77,6 +80,9 @@ void app_main(void)
 
 #pragma endregion
 
+    // init the ADC channel
+    adc_init();
+
     float setpoint = 0.0;
     float control_value = 0.0;
 
@@ -97,11 +103,16 @@ void app_main(void)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
 
+        int a = adc_u1_ch4();
+        printf("%d", a);
+
         xQueueReceive(MAX31856_TEMP_READ_QUEUE, &temperature, 0);
         xQueueReceive(MAX31856_FAULT_QUEUE, &fault, 0);
 
-        printf("Temperature: %.1f °C\n", temperature);
-        printf("Control Value: %.1f\n", *pid.ControlValue);
+        // ESP_LOGI(TAG, "ADC1_CHANNEL_0: %" PRId32 " mV", voltage_36);
+        // ESP_LOGI(TAG, "ADC1_CHANNEL_1: %" PRId32 " mV", voltage_37);
+        ESP_LOGI(TAG, "Temperature: %.1f °C", temperature);
+        ESP_LOGI(TAG, "Control Value: %.1f", *pid.ControlValue);
 
         max31856_log_faults(fault);
     }
