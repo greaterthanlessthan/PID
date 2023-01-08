@@ -46,13 +46,13 @@ void pwm_init(int pulse_gpio, uint32_t timer_resolution, uint32_t timer_period)
 
     // Define what the generator should do
     ESP_LOGI(TAG, "Set generator action on timer and compare event");
-    // go high on counter empty
+    // go high on counter empty i.e. at the start of every timer cycle
     ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_timer_event(generator,
                                                                MCPWM_GEN_TIMER_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP,
                                                                                             MCPWM_TIMER_EVENT_EMPTY,
                                                                                             MCPWM_GEN_ACTION_HIGH),
                                                                MCPWM_GEN_TIMER_EVENT_ACTION_END()));
-    // go low on compare threshold
+    // go low on compare threshold i.e. when timer > compare value
     ESP_ERROR_CHECK(mcpwm_generator_set_actions_on_compare_event(generator,
                                                                  MCPWM_GEN_COMPARE_EVENT_ACTION(MCPWM_TIMER_DIRECTION_UP,
                                                                                                 comparator,

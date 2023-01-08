@@ -101,7 +101,7 @@ void app_main(void)
 
     start_pid_task(&pid);
 
-    pid.ki = 0.1;
+    pid.ki = 0.5;
     pid.IntegratorLimits.ClampEnable = 1;
     pid.IntegratorLimits.LimitHi = 10;
     pid.IntegratorLimits.LimitLo = -10;
