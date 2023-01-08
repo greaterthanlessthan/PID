@@ -70,6 +70,7 @@ create_pid_struct(float *sp, float *pv, float *cv)
             .IntegratorLimits = lims,
             .SamplingRate = 20,
 
+            .Callback = NULL,
         };
 
     return pid_struct;
@@ -230,6 +231,11 @@ static void pid_controller_task(void *pid_arg)
                                                    last_cv,
                                                    pid->SamplingRate);
         last_cv = *pid->ControlValue;
+
+        if (pid->Callback != NULL)
+        {
+            (*pid->Callback)(pid);
+        }
     }
 }
 

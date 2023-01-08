@@ -52,6 +52,11 @@ typedef struct pid_controller_struct
     float IntegratorValue;              // value of the integrator
     struct pid_limits IntegratorLimits; // limits for the integrator
     uint16_t SamplingRate;              // sampling rate in ms
+
+    // function callback
+    // points to a function that is called whenever the PID cycles updates
+    // the function must return nothing and take pid_controller_struct as an argument
+    void (*Callback)(void *);
 } pid_controller_struct;
 
 /**

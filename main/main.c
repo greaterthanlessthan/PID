@@ -14,8 +14,8 @@
 
 #include "max31856.h"
 #include "PID.h"
-
 #include "adc.h"
+#include "pwm.h"
 
 #define PIN_NUM_MISO 19
 #define PIN_NUM_MOSI 23
@@ -25,10 +25,16 @@
 
 #define DRDY_PIN 21
 
+#define PWM_PULSE_GPIO 22                  // GPIO connects to the PWM signal line
+#define PWM_TIMEBASE_RESOLUTION_HZ 1000000 // 1MHz, 1us per tick
+#define PWM_TIMEBASE_PERIOD 20000          // 20000 ticks, 20ms
+
 // Because I want folding dammit
 #pragma GCC diagnostic ignored "-Wunknown-pragmas"
 
 static const char *TAG = "MAIN";
+
+void update_pwm_with_cv(void *_pid);
 
 void app_main(void)
 {
@@ -63,7 +69,6 @@ void app_main(void)
     max31856_start_drdy_pin_task(DRDY_PIN, &max_spi);
 
     float temperature = 0.0;
-    uint8_t fault = 255;
     uint8_t *r;
 
     // Set open wire detection
@@ -81,7 +86,11 @@ void app_main(void)
 #pragma endregion
 
     // init the ADC channel
+    // todo: improve the ADC oneshot library
     adc_init();
+
+    // init the PWM channel
+    pwm_init(PWM_PULSE_GPIO, PWM_TIMEBASE_RESOLUTION_HZ, PWM_TIMEBASE_PERIOD);
 
     float setpoint = 0.0;
     float control_value = 0.0;
@@ -98,22 +107,26 @@ void app_main(void)
     pid.IntegratorLimits.LimitLo = -10;
     pid.Init = false;
     *pid.Setpoint = 30;
+    pid.Callback = &update_pwm_with_cv;
 
     while (true)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
 
-        int a = adc_u1_ch4();
-        printf("%d", a);
+        // adc_u1_ch4();
 
         xQueueReceive(MAX31856_TEMP_READ_QUEUE, &temperature, 0);
-        xQueueReceive(MAX31856_FAULT_QUEUE, &fault, 0);
 
-        // ESP_LOGI(TAG, "ADC1_CHANNEL_0: %" PRId32 " mV", voltage_36);
-        // ESP_LOGI(TAG, "ADC1_CHANNEL_1: %" PRId32 " mV", voltage_37);
         ESP_LOGI(TAG, "Temperature: %.1f °C", temperature);
         ESP_LOGI(TAG, "Control Value: %.1f", *pid.ControlValue);
-
-        max31856_log_faults(fault);
     }
 }
+
+// callback function of the PID loop
+void update_pwm_with_cv(void *_pid)
+{
+    pid_controller_struct *pid = (pid_controller_struct *)_pid;
+    uint32_t pulse_width = 1000 * (*pid->ControlValue > 0 ? *pid->ControlValue : 0);
+    ESP_LOGV(TAG, "Setting pulse width to %" PRId32, pulse_width);
+    set_pulse_width(pulse_width);
+};
