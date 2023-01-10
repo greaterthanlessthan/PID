@@ -309,8 +309,7 @@ read_temperature_task(void *spi_handle)
 
         max31856_log_faults(*r);
 
-        // ESP_LOGD (TAG, "Temp read task has %d words remaining in stack\n",
-        //          uxTaskGetStackHighWaterMark (NULL));
+        ESP_LOGV(TAG, "Task has %d words remaining in stack", uxTaskGetStackHighWaterMark(NULL));
     }
 }
 

@@ -28,7 +28,7 @@ static const char *PID_TAG = "PID";
  * Provide a pid_controller_struct with defaults set
  */
 pid_controller_struct
-create_pid_struct(float *sp, float *pv, float *cv)
+create_pid_struct()
 {
     pid_limits lims =
         {
@@ -47,9 +47,9 @@ create_pid_struct(float *sp, float *pv, float *cv)
 
     pid_controller_struct pid_struct =
         {
-            .Setpoint = sp,
-            .ProcessValue = pv,
-            .ControlValue = cv,
+            .Setpoint = 0.0,
+            .ProcessValue = 0.0,
+            .ControlValue = 0.0,
 
             .SetpointLimits = lims,
             .ProcessValueLimits = lims,
@@ -70,7 +70,8 @@ create_pid_struct(float *sp, float *pv, float *cv)
             .IntegratorLimits = lims,
             .SamplingRate = 20,
 
-            .Callback = NULL,
+            .PVSPCallback = NULL,
+            .CVCallback = NULL,
         };
 
     return pid_struct;
@@ -176,10 +177,15 @@ static void pid_controller_task(void *pid_arg)
         xTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(pid->SamplingRate));
         xLastWakeTime = xTaskGetTickCount();
 
+        if (pid->PVSPCallback != NULL)
+        {
+            (*pid->PVSPCallback)(pid);
+        }
+
         // process value processing
         // set the function-scope pv
         pv = calculate_both_limits(&pid->ProcessValueLimits,
-                                   *pid->ProcessValue,
+                                   pid->ProcessValue,
                                    last_pv,
                                    pid->SamplingRate);
         last_pv = pv;
@@ -187,7 +193,7 @@ static void pid_controller_task(void *pid_arg)
         // setpoint processing
         // set the function-scope sp
         sp = calculate_both_limits(&pid->ProcessValueLimits,
-                                   *pid->Setpoint,
+                                   pid->Setpoint,
                                    last_sp,
                                    pid->SamplingRate);
         last_sp = sp;
@@ -226,16 +232,17 @@ static void pid_controller_task(void *pid_arg)
         cv = p_component + pid->IntegratorValue + d_component;
 
         // apply limits before writing to control value
-        *pid->ControlValue = calculate_both_limits(&pid->ControlValueLimits,
-                                                   cv,
-                                                   last_cv,
-                                                   pid->SamplingRate);
-        last_cv = *pid->ControlValue;
+        pid->ControlValue = calculate_both_limits(&pid->ControlValueLimits,
+                                                  cv,
+                                                  last_cv,
+                                                  pid->SamplingRate);
+        last_cv = pid->ControlValue;
 
-        if (pid->Callback != NULL)
+        if (pid->CVCallback != NULL)
         {
-            (*pid->Callback)(pid);
+            (*pid->CVCallback)(pid);
         }
+        ESP_LOGV(PID_TAG, "Task has %d words remaining in stack", uxTaskGetStackHighWaterMark(NULL));
     }
 }
 
@@ -244,7 +251,7 @@ void start_pid_task(pid_controller_struct *pid)
     BaseType_t task_ret;
 
     // start gpio task
-    task_ret = xTaskCreate(pid_controller_task, "pid_controller_task", 4000,
+    task_ret = xTaskCreate(pid_controller_task, "pid_controller_task", 2000,
                            (void *)pid, 20, NULL);
     if (task_ret == pdPASS)
     {

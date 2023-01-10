@@ -17,6 +17,8 @@
 #include "adc.h"
 #include "pwm.h"
 
+#include "pwm_slow.h"
+
 #define PIN_NUM_MISO 19
 #define PIN_NUM_MOSI 23
 #define PIN_NUM_CLK 18
@@ -35,6 +37,14 @@
 static const char *TAG = "MAIN";
 
 void update_pwm_with_cv(void *_pid);
+void receive_temp_to_pv(void *_pid);
+
+pwm_slow_params pwm_params = {
+    .period = 2000,
+    .duty_cycle = 0,
+    .min_pulse_width = 17,
+    .pwm_pin = PWM_PULSE_GPIO,
+};
 
 void app_main(void)
 {
@@ -68,7 +78,6 @@ void app_main(void)
     // Begin the temperature reading task
     max31856_start_drdy_pin_task(DRDY_PIN, &max_spi);
 
-    float temperature = 0.0;
     uint8_t *r;
 
     // Set open wire detection
@@ -87,27 +96,25 @@ void app_main(void)
 
     // init the ADC channel
     // todo: improve the ADC oneshot library
-    adc_init();
+    // adc_init();
 
     // init the PWM channel
-    pwm_init(PWM_PULSE_GPIO, PWM_TIMEBASE_RESOLUTION_HZ, PWM_TIMEBASE_PERIOD);
+    // pwm_init(PWM_PULSE_GPIO, PWM_TIMEBASE_RESOLUTION_HZ, PWM_TIMEBASE_PERIOD);
 
-    float setpoint = 0.0;
-    float control_value = 0.0;
+    start_slow_pwm_task(&pwm_params);
 
-    pid_controller_struct pid = create_pid_struct(&setpoint,
-                                                  &temperature,
-                                                  &control_value);
+    pid_controller_struct pid = create_pid_struct();
 
     start_pid_task(&pid);
 
-    pid.ki = 0.5;
+    pid.ki = 0.01;
     pid.IntegratorLimits.ClampEnable = 1;
     pid.IntegratorLimits.LimitHi = 10;
     pid.IntegratorLimits.LimitLo = -10;
     pid.Init = false;
-    *pid.Setpoint = 30;
-    pid.Callback = &update_pwm_with_cv;
+    pid.Setpoint = 30;
+    pid.PVSPCallback = &receive_temp_to_pv;
+    pid.CVCallback = &update_pwm_with_cv;
 
     while (true)
     {
@@ -115,18 +122,24 @@ void app_main(void)
 
         // adc_u1_ch4();
 
-        xQueueReceive(MAX31856_TEMP_READ_QUEUE, &temperature, 0);
-
-        ESP_LOGI(TAG, "Temperature: %.1f °C", temperature);
-        ESP_LOGI(TAG, "Control Value: %.1f", *pid.ControlValue);
+        ESP_LOGI(TAG, "Temperature: %.1f °C", pid.ProcessValue);
+        ESP_LOGI(TAG, "Control Value: %.1f", pid.ControlValue);
     }
 }
+
+// callback function of the PID loop
+void receive_temp_to_pv(void *_pid)
+{
+    pid_controller_struct *pid = (pid_controller_struct *)_pid;
+    xQueueReceive(MAX31856_TEMP_READ_QUEUE, &pid->ProcessValue, 0);
+};
 
 // callback function of the PID loop
 void update_pwm_with_cv(void *_pid)
 {
     pid_controller_struct *pid = (pid_controller_struct *)_pid;
-    uint32_t pulse_width = 1000 * (*pid->ControlValue > 0 ? *pid->ControlValue : 0);
-    ESP_LOGV(TAG, "Setting pulse width to %" PRId32, pulse_width);
-    set_pulse_width(pulse_width);
+    float pulse_width = 10.0 * (pid->ControlValue > 0 ? pid->ControlValue : 0);
+    ESP_LOGV(TAG, "Setting pulse width to %.1f", pulse_width);
+    // set_pulse_width(pulse_width);
+    pwm_params.duty_cycle = pulse_width;
 };

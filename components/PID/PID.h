@@ -27,9 +27,9 @@ typedef struct pid_limits
 typedef struct pid_controller_struct
 {
     // inputs and output
-    float *Setpoint;                      // memory address of the setpoint
-    float *ProcessValue;                  // memory address of the process value
-    float *ControlValue;                  // memory address of the control value
+    float Setpoint;                       // memory address of the setpoint
+    float ProcessValue;                   // memory address of the process value
+    float ControlValue;                   // memory address of the control value
     struct pid_limits SetpointLimits;     // limits for the setpoint
     struct pid_limits ProcessValueLimits; // sanity checking
     struct pid_limits ControlValueLimits; // limits for the control value
@@ -53,17 +53,24 @@ typedef struct pid_controller_struct
     struct pid_limits IntegratorLimits; // limits for the integrator
     uint16_t SamplingRate;              // sampling rate in ms
 
-    // function callback
-    // points to a function that is called whenever the PID cycles updates
+    // PV callback
+    // points to a function that is called whenever the PID cycle begins
     // the function must return nothing and take pid_controller_struct as an argument
-    void (*Callback)(void *);
+    // intended to receive the input and setpoint
+    void (*PVSPCallback)(void *);
+
+    // CV callback
+    // points to a function that is called whenever the PID cycle completes
+    // the function must return nothing and take pid_controller_struct as an argument
+    // intended to update the output
+    void (*CVCallback)(void *);
 } pid_controller_struct;
 
 /**
  * Create a pid_controller_struct with default values and memory addresses defined for inputs and outputs
  */
 pid_controller_struct
-create_pid_struct(float *sp, float *pv, float *cv);
+create_pid_struct();
 
 /**
  * Begin the PID task
