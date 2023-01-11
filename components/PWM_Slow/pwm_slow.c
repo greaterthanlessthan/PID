@@ -5,6 +5,8 @@
 
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "driver/gptimer.h"
+#include "esp_system.h"
 
 #include "pwm_slow.h"
 
@@ -33,6 +35,20 @@ init_gpio(int pin)
     gpio_config(&io_conf);
 };
 
+// static bool timer_alarm_handler_gpio_low(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *pin)
+//{
+//     int *gpio_num = (int *)pin;
+//     gpio_set_level(*gpio_num, 0);
+//     return 0;
+// }
+//
+// static bool timer_alarm_handler_gpio_high(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *pin)
+//{
+//     int *gpio_num = (int *)pin;
+//     gpio_set_level(*gpio_num, 1);
+//     return 0;
+// }
+
 static void slow_pwm_task(void *_params)
 {
     pwm_slow_params *params = (pwm_slow_params *)_params;
@@ -42,6 +58,42 @@ static void slow_pwm_task(void *_params)
     uint16_t period_low;
 
     init_gpio(params->pwm_pin);
+
+    //    gptimer_handle_t gptimer = NULL;
+    //    gptimer_config_t timer_config = {
+    //        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+    //        .direction = GPTIMER_COUNT_UP,
+    //        .resolution_hz = 100000, // 100kHz, 1 tick = 10us
+    //    };
+    //    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
+    //
+    //    gptimer_alarm_config_t alarm_config = {
+    //        .alarm_count = 50000,                // period = 0.5s @resolution 100kHz
+    //        .flags.auto_reload_on_alarm = false, // disable auto-reload
+    //    };
+    //    ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config));
+    //
+    //    gptimer_event_callbacks_t cbs = {
+    //        .on_alarm = timer_alarm_handler_gpio_low, // register user callback
+    //    };
+    //    ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs, &params->pwm_pin));
+    //
+    //    gptimer_alarm_config_t alarm_config2 = {
+    //        .reload_count = 0,
+    //        .alarm_count = 100000,              // period = 0.5s @resolution 100kHz
+    //        .flags.auto_reload_on_alarm = true, // disable auto-reload
+    //    };
+    //    ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config2));
+    //
+    //    gptimer_event_callbacks_t cbs2 = {
+    //        .on_alarm = timer_alarm_handler_gpio_high, // register user callback
+    //    };
+    //    ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs2, &params->pwm_pin));
+    //
+    //    ESP_ERROR_CHECK(gptimer_enable(gptimer));
+    //    ESP_ERROR_CHECK(gptimer_start(gptimer));
+    //
+    //    ESP_LOGI(TAG, "Started the timer");
 
     for (;;)
     {
