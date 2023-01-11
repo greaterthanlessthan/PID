@@ -73,12 +73,6 @@
 extern QueueHandle_t MAX31856_TEMP_READ_QUEUE;
 
 /**
- * @brief queue whill contain faults from the max31856
- *
- */
-extern QueueHandle_t MAX31856_FAULT_QUEUE;
-
-/**
  * @brief writes up to four registers from the max31856, starting with an
  * address given
  *

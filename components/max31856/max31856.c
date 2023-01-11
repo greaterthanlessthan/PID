@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "freertos/portmacro.h" // makes intellisense shut up
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -15,23 +16,20 @@
 
 #include <inttypes.h>
 
-#define LOG_MEM_ALLOC_ERROR                                               \
-    ESP_LOGE(TAG, "Could not allocate memory, see %s, line %d", __FILE__, \
-             __LINE__);
+#define LOG_MEM_ALLOC_ERROR \
+    ESP_LOGE(TAG, "Could not allocate memory, see %s, line %d", __FILE__, __LINE__);
 
 static const char *TAG = "MAX31856";
 
-static QueueHandle_t DRDY_EVT_QUEUE = NULL;
 QueueHandle_t MAX31856_TEMP_READ_QUEUE = NULL;
-QueueHandle_t MAX31856_FAULT_QUEUE = NULL;
+static TaskHandle_t max31856_task_handle = NULL;
 
 /**
  * @brief Converts a 19-bit register into a float
  *  Used for converting temperatue registers into float
  */
 static float
-max31856_19bit_to_float(uint8_t upper_byte, uint8_t middle_byte,
-                        uint8_t lower_byte)
+max31856_19bit_to_float(uint8_t upper_byte, uint8_t middle_byte, uint8_t lower_byte)
 {
     // Last 5 bits are not used, and msb is the sign
     int32_t value = ((upper_byte & 0x7f) << 11) + (middle_byte << 3) + (lower_byte >> 5);
@@ -153,8 +151,7 @@ max31856_device_interface(uint8_t cs_pin)
 }
 
 uint8_t *
-max31856_read_register(spi_device_handle_t *spi_handle, uint8_t address,
-                       uint8_t num_to_read)
+max31856_read_register(spi_device_handle_t *spi_handle, uint8_t address, uint8_t num_to_read)
 {
     if (num_to_read > 4)
     {
@@ -254,28 +251,22 @@ static void IRAM_ATTR
 drdy_isr_handler(void *pin)
 {
     uint32_t gpio_num = (uint32_t)pin;
-    xQueueSendFromISR(DRDY_EVT_QUEUE, &gpio_num, NULL);
+    BaseType_t n;
+    xTaskNotifyFromISR(max31856_task_handle, gpio_num, eNoAction, &n);
 }
 
 static void
-read_temperature_task(void *spi_handle)
+read_temperature_task(void *_spi_handle)
 {
+    spi_device_handle_t *spi_handle = (spi_device_handle_t *)_spi_handle;
     uint8_t no_temp_ct = 0;
     uint8_t *r;
-    uint32_t io_num;
     float temperature;
     BaseType_t queue_ret;
-    spi_handle = (spi_device_handle_t *)spi_handle;
 
     // Queue to store temperature values
     MAX31856_TEMP_READ_QUEUE = xQueueCreate(1, sizeof(float));
     if (MAX31856_TEMP_READ_QUEUE == NULL)
-    {
-        LOG_MEM_ALLOC_ERROR
-    }
-
-    MAX31856_FAULT_QUEUE = xQueueCreate(1, sizeof(uint8_t));
-    if (MAX31856_FAULT_QUEUE == NULL)
     {
         LOG_MEM_ALLOC_ERROR
     }
@@ -288,64 +279,49 @@ read_temperature_task(void *spi_handle)
     for (;;)
     {
         // automatic conversion happens about every 100ms
-        queue_ret = xQueueReceive(DRDY_EVT_QUEUE, &io_num, pdMS_TO_TICKS(150));
+        queue_ret = xTaskNotifyWait(0x00, UINT32_MAX, NULL, pdMS_TO_TICKS(150));
         // Notify if not getting signal from DRDY
         no_temp_ct = (queue_ret == pdTRUE) ? 0 : no_temp_ct + 1;
         if (no_temp_ct > 5)
         {
-            ESP_LOGE(TAG, "Not getting new temperature value from MAX31856. "
-                          "Check CMODE or interrupt set up for pin DRDY.");
+            ESP_LOGE(TAG, "Not getting new temperature value from MAX31856.");
         }
 
         // Read the temperature
         temperature = max31856_read_temperature(spi_handle);
         xQueueOverwrite(MAX31856_TEMP_READ_QUEUE, &temperature);
-        ESP_LOGD(TAG, "Sent temperature of %.4f to MAX31856_TEMP_READ_QUEUE",
-                 temperature);
+        ESP_LOGD(TAG, "Sent temperature of %.4f to MAX31856_TEMP_READ_QUEUE", temperature);
 
         // Read fault register and report that back
         r = max31856_read_register(spi_handle, R_REG_SR, 1);
-        xQueueOverwrite(MAX31856_FAULT_QUEUE, r);
-
         max31856_log_faults(*r);
 
         ESP_LOGV(TAG, "Task has %d words remaining in stack", uxTaskGetStackHighWaterMark(NULL));
     }
 }
 
-void max31856_start_drdy_pin_task(uint32_t drdy_pin,
-                                  spi_device_handle_t *spi_handle)
+void max31856_start_drdy_pin_task(uint32_t drdy_pin, spi_device_handle_t *spi_handle)
 {
-    esp_err_t ret;
     BaseType_t task_ret;
 
     // Configure the pin
-    gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;
-    io_conf.pin_bit_mask = 1ULL << drdy_pin;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
-    ret = gpio_config(&io_conf);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ret);
+    gpio_config_t io_conf = {
+        .pull_up_en = 1,
+        .intr_type = GPIO_INTR_NEGEDGE,
+        .pin_bit_mask = 1ULL << drdy_pin,
+        .mode = GPIO_MODE_INPUT,
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 
     // Set interrupt type
-    ret = gpio_set_intr_type(drdy_pin, GPIO_INTR_NEGEDGE);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ret);
-    // create a queue to handle gpio event from isr
-    DRDY_EVT_QUEUE = xQueueCreate(1, sizeof(uint32_t));
-    if (DRDY_EVT_QUEUE == NULL)
-    {
-        LOG_MEM_ALLOC_ERROR
-    }
+    ESP_ERROR_CHECK(gpio_set_intr_type(drdy_pin, GPIO_INTR_NEGEDGE));
 
     // start gpio task
     task_ret = xTaskCreate(read_temperature_task, "read_temperature_task", 1800,
-                           (void *)spi_handle, 10, NULL);
+                           (void *)spi_handle, 10, &max31856_task_handle);
     if (task_ret == pdPASS)
     {
-        ESP_LOGI(TAG,
-                 "Started temperature reading task; recieve temperatures in "
-                 "MAX31856_TEMP_READ_QUEUE");
+        ESP_LOGI(TAG, "Started temperature reading task.");
     }
     else
     {
@@ -353,10 +329,6 @@ void max31856_start_drdy_pin_task(uint32_t drdy_pin,
     }
 
     // hook isr handler for specific gpio pin
-    ret = gpio_isr_handler_add(drdy_pin, drdy_isr_handler, (void *)drdy_pin);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ret);
-    if (ret == ESP_OK)
-    {
-        ESP_LOGI(TAG, "Attached MAX31856 DRDY pin to ISR on pin %" PRId32, drdy_pin);
-    }
+    ESP_ERROR_CHECK(gpio_isr_handler_add(drdy_pin, drdy_isr_handler, (void *)drdy_pin));
+    ESP_LOGI(TAG, "Attached MAX31856 DRDY pin to ISR on pin %" PRId32, drdy_pin);
 }
