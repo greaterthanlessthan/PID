@@ -11,6 +11,7 @@
 #include "esp_system.h"
 #include "soc/gpio_struct.h"
 #include <esp_log.h>
+#include "nvs_flash.h"
 
 #include "max31856.h"
 #include "PID.h"
@@ -18,6 +19,7 @@
 #include "pwm.h"
 
 #include "pwm_slow.h"
+#include "wifi.h"
 
 #define PIN_NUM_MISO 19
 #define PIN_NUM_MOSI 23
@@ -40,7 +42,7 @@ void update_pwm_with_cv(void *_pid);
 void receive_temp_to_pv(void *_pid);
 
 pwm_slow_params pwm_params = {
-    .period = 2000,
+    .period = 300,
     .duty_cycle = 0,
     .min_pulse_width = 17,
     .pwm_pin = PWM_PULSE_GPIO,
@@ -107,14 +109,26 @@ void app_main(void)
 
     start_pid_task(&pid);
 
-    pid.ki = 0.01;
+    pid.ki = 0.001;
+    pid.kp = 0.3;
     pid.IntegratorLimits.ClampEnable = 1;
-    pid.IntegratorLimits.LimitHi = 10;
-    pid.IntegratorLimits.LimitLo = -10;
+    pid.IntegratorLimits.LimitHi = 5;
+    pid.IntegratorLimits.LimitLo = -5;
     pid.Init = false;
-    pid.Setpoint = 30;
+    pid.Setpoint = 60;
     pid.PVSPCallback = &receive_temp_to_pv;
     pid.CVCallback = &update_pwm_with_cv;
+
+    // Initialize NVS
+    ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    wifi_init_sta();
 
     while (true)
     {
@@ -139,7 +153,8 @@ void update_pwm_with_cv(void *_pid)
 {
     pid_controller_struct *pid = (pid_controller_struct *)_pid;
     float pulse_width = 10.0 * (pid->ControlValue > 0 ? pid->ControlValue : 0);
-    ESP_LOGV(TAG, "Setting pulse width to %.1f", pulse_width);
+    pulse_width = pulse_width > 100.0 ? 100.0 : pulse_width;
+    ESP_LOGD(TAG, "Setting pulse width to %.1f", pulse_width);
     // set_pulse_width(pulse_width);
     pwm_params.duty_cycle = pulse_width;
 };

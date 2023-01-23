@@ -102,6 +102,7 @@ static void slow_pwm_task(void *_params)
         ESP_LOGV(TAG, "Task has %d words remaining in stack", uxTaskGetStackHighWaterMark(NULL));
 
         // calculate how long GPIO should remain high and how long it should remain low
+        params->duty_cycle = params->duty_cycle > 100.0 ? 100.0 : params->duty_cycle;
         period_high = (params->duty_cycle / 100.0) * params->period;
 
         // round up to minimum period or round down to 0

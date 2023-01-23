@@ -317,7 +317,7 @@ void max31856_start_drdy_pin_task(uint32_t drdy_pin, spi_device_handle_t *spi_ha
     ESP_ERROR_CHECK(gpio_set_intr_type(drdy_pin, GPIO_INTR_NEGEDGE));
 
     // start gpio task
-    task_ret = xTaskCreate(read_temperature_task, "read_temperature_task", 1800,
+    task_ret = xTaskCreate(read_temperature_task, "read_temperature_task", 2000,
                            (void *)spi_handle, 10, &max31856_task_handle);
     if (task_ret == pdPASS)
     {
